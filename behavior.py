@@ -22,12 +22,28 @@ class Behavior(Node):
         self.plan_frequency_ = self.get_parameter("plan_frequency").value
 
         # Handles: Topic Subscribers
-        # !TODO: Goal pose subscriber
+        # !TODO: Goal pose subscriber IN PROGRESS
+        self.sub_goal_pose = self.create_subscription(
+            PoseStamped,
+            "goal_pose",
+            self.callbackSubGoalPose_,
+            10,
+        )
 
-        # !TODO: Odometry subscriber
+        # !TODO: Odometry subscriber IN PROGRESS
+        self.sub_odom_ = self.create_subscription(
+            Odometry,
+            "odom",
+            self.callbackSubOdom_,
+            10,
 
         # Handles: Topic Publishers
-        # !TODO: Path request publisher
+        # !TODO: Path request publisher IN PROGRESS
+        self.pub_path_request_ = self.create_publisher(
+            Path, 
+            "path_request", 
+            10,
+        )
 
         # Handles: Timers
         self.timer = self.create_timer(1.0 / self.frequency_, self.callbackTimer_)
@@ -50,8 +66,9 @@ class Behavior(Node):
             True  # "cancel" the goal and trigger the if condition in timer.
         )
 
-        # !TODO: Copy to goal_x_, goal_y_.
+        # !TODO: Copy to goal_x_, goal_y_. IN PROGRESS
         self.goal_x_ = msg.pose.position.x
+        self.goal_y_ = msg.pose.position.y
 
         self.get_logger().info(
             f"Received New Goal @ ({self.goal_x_:7.3f}, {self.goal_y_:7.3f})."
@@ -61,8 +78,9 @@ class Behavior(Node):
     def callbackSubOdom_(self, msg: Odometry):
         self.received_rbt_coords_ = True
 
-        # !TODO: Copy to rbt_x_, rbt_y_.
+        # !TODO: Copy to rbt_x_, rbt_y_. IN PROGRESS
         self.rbt_x_ = msg.pose.pose.orientation.x
+        self.rbt_y_ = msg.pose.pose.orientation.y
 
     # Callback for timer.
     # Normally the decisions of the robot system are made here, and this callback is dramatically simplified.
