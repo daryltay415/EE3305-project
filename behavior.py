@@ -117,14 +117,19 @@ class Behavior(Node):
         msg_path_request.header.stamp = self.get_clock().now().to_msg()
         msg_path_request.header.frame_id = "map"
 
-        # !TODO: write the robot coordinates
+        # !TODO: write the robot coordinates IN PROGRESS
         rbt_pose = PoseStamped()
-        rbt_pose.pose.position.x = 0.0
+        rbt_pose.pose.position.x = self.rbt_x_
+        rbt_pose.pose.position.y = self.rbt_y_
 
-        # !TODO: write the goal coordinates
+        # !TODO: write the goal coordinates IN PROGRESS
+        goal_pose = PoseStamped()
+        goal_pose.pose.position.x = self.goal_x_
+        goal_pose.pose.position.y = self.goal_y_
         
         # !TODO: fill up the array containing the robot coordinates at [0] and goal coordinates at [1]
         msg_path_request.poses.append(rbt_pose)
+        msg_path_request.poses.append(goal_pose)
 
         # publish the message
         self.get_logger().info(
