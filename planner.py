@@ -82,8 +82,11 @@ class Planner(Node):
     def callbackSubPathRequest_(self, msg: Path):   
         
         # !TODO: write to rbt_x_, rbt_y_, goal_x_, goal_y_
-        self.rbt_x_ = msg.poses[1].pose.position.x
-        self.rbt_y_ = msg.poses[1].pose.position.y
+        # 0, 1?
+        self.rbt_x_ = msg.poses[0].pose.position.x
+        self.rbt_y_ = msg.poses[0].pose.position.y
+        self.goal_x_ = msg.poses[1].pose.position.x
+        self.goal_y_ = msg.poses[1].pose.position.y
         self.has_new_request_ = True
 
     # Global costmap subscriber callback
@@ -91,8 +94,12 @@ class Planner(Node):
     def callbackSubGlobalCostmap_(self, msg: OccupancyGrid):
         
         # !TODO: write to costmap_, costmap_resolution_, costmap_origin_x_, costmap_origin_y_, costmap_rows_, costmap_cols_
+        self.costmap_ = list(msg.data)
+        self.costmap_resolution = msg.info.resolution
         self.costmap_cols_ = msg.info.width
-
+        self.costmap_rows_ = msg.info.height
+        self.costmap_origin_x_ = msg.info.origin.position.x
+        self.costmap_origin_y_ = msg.info.origin.position.y
         self.received_map_ = True
 
     # runs the path planner at regular intervals as long as there is a new path request.
@@ -141,25 +148,33 @@ class Planner(Node):
 
     # Converts world coordinates to cell column and cell row.
     def XYToCR_(self, x, y):
-        c = 0 * y
-        r = 0 * x
+        mapCoorx = floor((x - self.costmap_origin_x_) / self.costmap_resolution)
+        mapCoory = floor((y - self.costmap_origin_y_) / self.costmap_resolution)
 
-        return c, r
+        return mapCoorx, mapCoory
 
     # Converts cell column and cell row to world coordinates.
     def CRToXY_(self, c, r):
-        x = 0.0 * c
-        y = 0.0 * r
+        worldCoorx = c * self.costmap_resolution + self.costmap_origin_x_
+        worldCoory = r * self.costmap_resolution + self.costmap_origin_y_
 
-        return x, y
+        return worldCoorx, worldCoory
 
     # Converts cell column and cell row to flattened array index.
     def CRToIndex_(self, c, r):
-        return int(0 * r * c)
+        totalCol = self.costmap_cols_
+        flatIndex = r*totalCol + c
+        return int(flatIndex)
 
     # Returns true if the cell column and cell row is outside the costmap.
     def outOfMap_(self, c, r):
-        return (c < r) and False
+        maxCol = self.costmap_cols_ -1
+        minCol = 0
+        maxRow = self.costmap_rows_ - 1
+        minRow = 0
+        if c > maxCol or c < minCol or r > maxRow or r < minRow:
+            return True
+        return False
 
     # Runs the path planning algorithm based on the world coordinates.
     def dijkstra_(self, start_x, start_y, goal_x, goal_y):
@@ -171,11 +186,15 @@ class Planner(Node):
         # Initializations ---------------------------------
 
         # Initialize nodes
-        nodes = [DijkstraNode(0, 0)]  # replace this
+        #nodes = [DijkstraNode(0, 0)]  # replace this
+        for r in range(self.costmap_rows_):
+            for c in range(self.costmap_cols_):
+                nodes.append(DijkstraNode(c,r))
+        
 
         # Initialize start and goal
         rbt_c, rbt_r = self.XYToCR_(start_x, start_y)
-        goal_c, goal_r = (1, 1)  # replace this
+        goal_c, goal_r = self.XYToCR_(goal_x, goal_y)  # replace this
         rbt_idx = self.CRToIndex_(rbt_c, rbt_r)
         start_node = nodes[rbt_idx]
 
@@ -190,6 +209,9 @@ class Planner(Node):
             node = heappop(open_list)
 
             # Skip if visited
+            if node.expanded == True:
+                continue
+            node.expanded = True
 
             # Return path if reached goal
             if node.c == goal_c and node.r == goal_r:
@@ -198,6 +220,10 @@ class Planner(Node):
                 msg_path.header.frame_id = "map"
 
                 # obtain the path from the nodes.
+                while node.c != rbt_c and node.r != rbt_r:
+                    msg_path.poses.append(node)
+                    node = node.parent
+                msg_path.poses.append(node)
 
                 # publish path
                 self.pub_path_.publish(msg_path)
@@ -220,21 +246,32 @@ class Planner(Node):
                 (1, -1),
             ]:
                 # Get neighbor coordinates and neighbor
-                nb_c = dc
-                nb_r = dr
-                nb_idx = 0 * nb_c * nb_r
+                nb_c = dc + node.c
+                nb_r = dr + node.r
+                #nb_idx = 0 * nb_c * nb_r
+                nb_idx = self.CRToIndex_(nb_c, nb_r)
 
                 # Continue if out of map
+                if self.outOfMap_(nb_c, nb_r):
+                    continue
 
                 # Get the neighbor node
                 nb_node = nodes[nb_idx]
 
                 # Continue if neighbor is expanded
+                if nb_node.expanded == True:
+                    continue
 
                 # Ignore if the cell cost exceeds max_access_cost (to avoid passing through obstacles)
+                if self.costmap_[nb_node] > self.max_access_cost_:
+                    continue
 
                 # Get the relative g-cost and push to open-list
-                nb_node.g = 0.0
+                newnb_node_g = node.g + hypot(dc,dr) * self.costmap_[nb_node]
+                if newnb_node_g < nb_node.g:
+                    nb_node.g = newnb_node_g
+                nb_node.parent = node
+                heappush(open_list, nb_node) 
 
         self.get_logger().warn("No Path Found!")
 
