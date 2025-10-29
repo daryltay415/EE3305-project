@@ -23,7 +23,8 @@ class DijkstraNode:
         self.expanded = False
 
     def __lt__(self, other):  # comparator for heapq (min-heap) sorting
-        return self.g < other.g
+        #return self.g < other.g
+        return self.f < other.f
 
 
 class Planner(Node):
@@ -108,8 +109,8 @@ class Planner(Node):
             return  # silently return if no new request or map is not received.
 
         # run the path planner
-        self.dijkstra_(self.rbt_x_, self.rbt_y_, self.goal_x_, self.goal_y_)
-
+        #self.dijkstra_(self.rbt_x_, self.rbt_y_, self.goal_x_, self.goal_y_)
+        self.aStar_(self.rbt_x_, self.rbt_y_, self.goal_x_, self.goal_y_)
         self.has_new_request_ = False
 
     # Publish the interpolated path for testing
@@ -180,13 +181,14 @@ class Planner(Node):
     def dijkstra_(self, start_x, start_y, goal_x, goal_y):
 
         # Delete both lines when ready to code planner.py -----------------
-        self.publishInterpolatedPath(start_x, start_y, goal_x, goal_y)
-        return
+        #self.publishInterpolatedPath(start_x, start_y, goal_x, goal_y)
+        #return
 
         # Initializations ---------------------------------
 
         # Initialize nodes
         #nodes = [DijkstraNode(0, 0)]  # replace this
+        nodes = []
         for r in range(self.costmap_rows_):
             for c in range(self.costmap_cols_):
                 nodes.append(DijkstraNode(c,r))
@@ -197,6 +199,7 @@ class Planner(Node):
         goal_c, goal_r = self.XYToCR_(goal_x, goal_y)  # replace this
         rbt_idx = self.CRToIndex_(rbt_c, rbt_r)
         start_node = nodes[rbt_idx]
+        start_node.g = 0
 
         # Initialize open list
         open_list = []
@@ -220,11 +223,20 @@ class Planner(Node):
                 msg_path.header.frame_id = "map"
 
                 # obtain the path from the nodes.
-                while node.c != rbt_c and node.r != rbt_r:
-                    msg_path.poses.append(node)
+                
+                while node.parent:
+                    worldx, worldy = self.CRToXY_(node.c, node.r)
+                    pose = PoseStamped()
+                    pose.pose.position.x = worldx
+                    pose.pose.position.y = worldy
+                    msg_path.poses.append(pose)
                     node = node.parent
-                msg_path.poses.append(node)
-
+                pose = PoseStamped()
+                worldx, worldy = self.CRToXY_(node.c, node.r)
+                pose.pose.position.x = worldx
+                pose.pose.position.y = worldy
+                msg_path.poses.append(pose)
+                msg_path.poses.reverse()
                 # publish path
                 self.pub_path_.publish(msg_path)
 
@@ -263,15 +275,125 @@ class Planner(Node):
                     continue
 
                 # Ignore if the cell cost exceeds max_access_cost (to avoid passing through obstacles)
-                if self.costmap_[nb_node] > self.max_access_cost_:
+                if self.costmap_[nb_idx] > self.max_access_cost_:
                     continue
 
                 # Get the relative g-cost and push to open-list
-                newnb_node_g = node.g + hypot(dc,dr) * self.costmap_[nb_node]
+                newnb_node_g = node.g + hypot(dc,dr) * self.costmap_[nb_idx]
                 if newnb_node_g < nb_node.g:
                     nb_node.g = newnb_node_g
-                nb_node.parent = node
-                heappush(open_list, nb_node) 
+                    nb_node.parent = node
+                    heappush(open_list, nb_node) 
+
+        self.get_logger().warn("No Path Found!")
+
+    # Runs the path planning algorithm based on the world coordinates.
+    def aStar_(self, start_x, start_y, goal_x, goal_y):
+
+        # Delete both lines when ready to code planner.py -----------------
+        #self.publishInterpolatedPath(start_x, start_y, goal_x, goal_y)
+        #return
+
+        # Initializations ---------------------------------
+
+        # Initialize nodes
+        #nodes = [DijkstraNode(0, 0)]  # replace this
+        nodes = []
+        for r in range(self.costmap_rows_):
+            for c in range(self.costmap_cols_):
+                nodes.append(DijkstraNode(c,r))
+        
+
+        # Initialize start and goal
+        rbt_c, rbt_r = self.XYToCR_(start_x, start_y)
+        goal_c, goal_r = self.XYToCR_(goal_x, goal_y)  # replace this
+        rbt_idx = self.CRToIndex_(rbt_c, rbt_r)
+        start_node = nodes[rbt_idx]
+        start_node.g = 0
+
+        # Initialize open list
+        open_list = []
+        heappush(open_list, start_node)
+
+        # Expansion Loop ---------------------------------
+        while len(open_list) > 0:
+
+            # Poll cheapest node
+            node = heappop(open_list)
+
+            # Skip if visited
+            if node.expanded == True:
+                continue
+            node.expanded = True
+
+            # Return path if reached goal
+            if node.c == goal_c and node.r == goal_r:
+                msg_path = Path()
+                msg_path.header.stamp = self.get_clock().now().to_msg()
+                msg_path.header.frame_id = "map"
+
+                # obtain the path from the nodes.
+                while node.c != rbt_c or node.r != rbt_r:
+                    worldx, worldy = self.CRToXY_(node.c, node.r)
+                    pose = PoseStamped()
+                    pose.pose.position.x = worldx
+                    pose.pose.position.y = worldy
+                    msg_path.poses.append(pose)
+                    node = node.parent
+                worldx, worldy = self.CRToXY_(node.c, node.r)
+                pose = PoseStamped()
+                pose.pose.position.x = worldx
+                pose.pose.position.y = worldy
+                msg_path.poses.append(pose)
+                msg_path.poses.reverse()
+                # publish path
+                self.pub_path_.publish(msg_path)
+
+                self.get_logger().info(
+                    f"Length of path = {len(msg_path.poses)}"
+                )
+
+                return
+
+            # Neighbor Loop --------------------------------------------------
+            for dc, dr in [
+                (1, 0),
+                (1, 1),
+                (0, 1),
+                (-1, 1),
+                (-1, 0),
+                (-1, -1),
+                (0, -1),
+                (1, -1),
+            ]:
+                # Get neighbor coordinates and neighbor
+                nb_c = dc + node.c
+                nb_r = dr + node.r
+                #nb_idx = 0 * nb_c * nb_r
+                nb_idx = self.CRToIndex_(nb_c, nb_r)
+
+                # Continue if out of map
+                if self.outOfMap_(nb_c, nb_r):
+                    continue
+
+                # Get the neighbor node
+                nb_node = nodes[nb_idx]
+
+                # Continue if neighbor is expanded
+                if nb_node.expanded == True:
+                    continue
+
+                # Ignore if the cell cost exceeds max_access_cost (to avoid passing through obstacles)
+                if self.costmap_[nb_idx] > self.max_access_cost_:
+                    continue
+
+                # Get the relative g-cost and push to open-list
+                newnb_node_g = node.g + hypot(dc,dr) * self.costmap_[nb_idx]
+                if newnb_node_g < nb_node.g:
+                    nb_node.g = newnb_node_g
+                    nb_node.f = newnb_node_g + ((nb_c - goal_c)**2 + (nb_r - goal_r)**2) ** (0.5) 
+                    nb_node.parent = node
+                    heappush(open_list, nb_node) 
 
         self.get_logger().warn("No Path Found!")
 
