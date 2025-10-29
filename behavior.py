@@ -36,6 +36,7 @@ class Behavior(Node):
             "odom",
             self.callbackSubOdom_,
             10,
+        )
 
         # Handles: Topic Publishers
         # !TODO: Path request publisher IN PROGRESS
