@@ -151,13 +151,13 @@ class Planner(Node):
     def XYToCR_(self, x, y):
         mapCoorx = floor((x - self.costmap_origin_x_) / self.costmap_resolution)
         mapCoory = floor((y - self.costmap_origin_y_) / self.costmap_resolution)
-
+        
         return mapCoorx, mapCoory
 
     # Converts cell column and cell row to world coordinates.
     def CRToXY_(self, c, r):
-        worldCoorx = c * self.costmap_resolution + self.costmap_origin_x_
-        worldCoory = r * self.costmap_resolution + self.costmap_origin_y_
+        worldCoorx = (c + 0.5) * self.costmap_resolution + self.costmap_origin_x_
+        worldCoory = (r + 0.5) * self.costmap_resolution + self.costmap_origin_y_
 
         return worldCoorx, worldCoory
 
@@ -188,6 +188,10 @@ class Planner(Node):
 
         # Initialize nodes
         #nodes = [DijkstraNode(0, 0)]  # replace this
+        #print(f"costmap: {self.costmap_}")
+        #testx, testy = self.XYToCR_(-5.275,-4.945)
+        #testx, testy = self.CRToXY_(9,4)
+        #print(f"testx = {testx}, testy = {testy}, originx = {self.costmap_origin_x_}, originy = {self.costmap_origin_y_}, reso = {self.costmap_resolution}")
         nodes = []
         for r in range(self.costmap_rows_):
             for c in range(self.costmap_cols_):
@@ -258,10 +262,15 @@ class Planner(Node):
                 (1, -1),
             ]:
                 # Get neighbor coordinates and neighbor
+                
                 nb_c = dc + node.c
                 nb_r = dr + node.r
+                
                 #nb_idx = 0 * nb_c * nb_r
                 nb_idx = self.CRToIndex_(nb_c, nb_r)
+                #print(f"dc = {dc}, node.c = {node.c}, nb_c = {nb_c}")
+                #print(f"dr = {dr}, node.c = {node.r}, nb_c = {nb_r}")
+                #print(f"nb_idx = {nb_idx}, rows = {self.costmap_rows_}, cols = {self.costmap_cols_}")
 
                 # Continue if out of map
                 if self.outOfMap_(nb_c, nb_r):
@@ -279,7 +288,8 @@ class Planner(Node):
                     continue
 
                 # Get the relative g-cost and push to open-list
-                newnb_node_g = node.g + hypot(dc,dr) * self.costmap_[nb_idx]
+                newnb_node_g = node.g + hypot(dc,dr) * (self.costmap_[nb_idx] + 1)
+                #print(f"self.costmap = {self.costmap_[nb_idx]}, newnb_nodeg={newnb_node_g}")
                 if newnb_node_g < nb_node.g:
                     nb_node.g = newnb_node_g
                     nb_node.parent = node
@@ -388,7 +398,7 @@ class Planner(Node):
                     continue
 
                 # Get the relative g-cost and push to open-list
-                newnb_node_g = node.g + hypot(dc,dr) * self.costmap_[nb_idx]
+                newnb_node_g = node.g + hypot(dc,dr) * (self.costmap_[nb_idx] + 1)
                 if newnb_node_g < nb_node.g:
                     nb_node.g = newnb_node_g
                     nb_node.f = newnb_node_g + ((nb_c - goal_c)**2 + (nb_r - goal_r)**2) ** (0.5) 
