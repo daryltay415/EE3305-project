@@ -65,6 +65,7 @@ class Controller(Node):
         # Other Instance Variables
         self.received_odom_ = False
         self.received_path_ = False
+        self.lookahead_idx_ = 0
 
     # Callbacks =============================================================
     
@@ -75,7 +76,7 @@ class Controller(Node):
             return  # do not update the path if no path is returned. This will ensure the copied path contains at least one point when the first non-empty path is received.
 
         # !TODO: copy the array from the path
-        self.path_poses_ = msg.poses #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        self.path_poses_ = msg.poses
 
         self.received_path_ = True
 
@@ -97,12 +98,11 @@ class Controller(Node):
 
         # From the closest point, iterate towards the goal and find the first point that is at least a lookahead distance away.
         # Return the goal point if no such lookahead point can be found
-        lookahead_idx = 0
         found_point = False
 
-        while lookahead_idx < len(self.path_poses_):
+        while self.lookahead_idx_ < len(self.path_poses_):
             # Get the lookahead coordinates
-            lookahead_pose = self.path_poses_[lookahead_idx]
+            lookahead_pose = self.path_poses_[self.lookahead_idx_]
             lookahead_x = lookahead_pose.pose.position.x
             lookahead_y = lookahead_pose.pose.position.y
 
@@ -111,7 +111,7 @@ class Controller(Node):
                 found_point = True
                 break
 
-            lookahead_idx += 1
+            self.lookahead_idx_ += 1
 
         if found_point == False:
             lookahead_x = self.goal_x_
@@ -156,6 +156,10 @@ class Controller(Node):
         # but only when the robot is travelling too fast (which should not occur if well tuned).
         lin_vel = min(lin_vel, self.max_lin_vel_)
         ang_vel = min(ang_vel, self.max_ang_vel_)
+
+        self.get_logger().info(
+            f"Velocities @ ({lin_vel:7.3f}, {ang_vel:7.3f})"
+        )
 
         # publish velocities
         msg_cmd_vel = TwistStamped()
