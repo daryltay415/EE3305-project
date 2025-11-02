@@ -71,9 +71,9 @@ class Behavior(Node):
         self.goal_x_ = msg.pose.position.x
         self.goal_y_ = msg.pose.position.y
 
-        self.get_logger().info(
-            f"Received New Goal @ ({self.goal_x_:7.3f}, {self.goal_y_:7.3f})."
-        )
+    #    self.get_logger().info(
+     #       f"Received New Goal @ ({self.goal_x_:7.3f}, {self.goal_y_:7.3f})."
+      #  )
 
     # Odometry subscriber callback.
     def callbackSubOdom_(self, msg: Odometry):
@@ -96,14 +96,14 @@ class Behavior(Node):
         goal_is_close = hypot(dx, dy) < 0.1
 
         if goal_is_close and not self.goal_reached_:
-            self.get_logger().info(
-                f"Reached Goal @ ({self.goal_x_:7.3f}, {self.goal_y_:7.3f})."
-            )
+        #    self.get_logger().info(
+         #       f"Reached Goal @ ({self.goal_x_:7.3f}, {self.goal_y_:7.3f})."
+          #  )
             self.goal_reached_ = True
         elif not goal_is_close and self.goal_reached_:
-            self.get_logger().info(
-                f"Going to Goal @ ({self.goal_x_:7.3f}, {self.goal_y_:7.3f})."
-            )
+        #    self.get_logger().info(
+         #       f"Going to Goal @ ({self.goal_x_:7.3f}, {self.goal_y_:7.3f})."
+          #  )
             self.goal_reached_ = False
 
     # Callback for publishing path requests between clicked_point (goal) and robot position.
@@ -133,9 +133,9 @@ class Behavior(Node):
         msg_path_request.poses.append(goal_pose)
 
         # publish the message
-        self.get_logger().info(
-            f"Sending Path Planning Request from Rbt @ ({self.rbt_x_:7.3f}, {self.rbt_y_:7.3f}) to Goal @ ({self.goal_x_:7.3f}, {self.goal_y_:7.3f})"
-        )
+    #    self.get_logger().info(
+     #       f"Sending Path Planning Request from Rbt @ ({self.rbt_x_:7.3f}, {self.rbt_y_:7.3f}) to Goal @ ({self.goal_x_:7.3f}, {self.goal_y_:7.3f})"
+      #  )
         self.pub_path_request_.publish(msg_path_request)
 
 

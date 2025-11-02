@@ -35,9 +35,13 @@ class Planner(Node):
 
         # Parameters: Declare
         self.declare_parameter("max_access_cost", int(100))
+        self.declare_parameter("max_skipping_cost", int(5))
+        self.declare_parameter("max_skipping_dist", float(1.0))
 
         # Parameters: Get Values
         self.max_access_cost_ = self.get_parameter("max_access_cost").value
+        self.max_skipping_cost_ = self.get_parameter("max_skipping_cost").value
+        self.max_skipping_dist_ = self.get_parameter("max_skipping_dist").value
 
         # Handles: Topic Subscribers
         # Global costmap subscriber
@@ -143,9 +147,9 @@ class Planner(Node):
         # publish the path
         self.pub_path_.publish(msg_path)
 
-        self.get_logger().info(
-            f"Publishing interpolated path between Start and Goal. Implement dijkstra_() instead."
-        )
+    #    self.get_logger().info(
+     #       f"Publishing interpolated path between Start and Goal. Implement dijkstra_() instead."
+      #  )
 
     # Converts world coordinates to cell column and cell row.
     def XYToCR_(self, x, y):
@@ -244,9 +248,9 @@ class Planner(Node):
                 # publish path
                 self.pub_path_.publish(msg_path)
 
-                self.get_logger().info(
-                    f"Path Found from Rbt @ ({start_x:7.3f}, {start_y:7.3f}) to Goal @ ({goal_x:7.3f},{goal_y:7.3f})"
-                )
+        #        self.get_logger().info(
+         #           f"Path Found from Rbt @ ({start_x:7.3f}, {start_y:7.3f}) to Goal @ ({goal_x:7.3f},{goal_y:7.3f})"
+          #      )
 
                 return
 
@@ -295,7 +299,7 @@ class Planner(Node):
                     nb_node.parent = node
                     heappush(open_list, nb_node) 
 
-        self.get_logger().warn("No Path Found!")
+        #self.get_logger().warn("No Path Found!")
 
     # Runs the path planning algorithm based on the world coordinates.
     def aStar_(self, start_x, start_y, goal_x, goal_y):
@@ -357,11 +361,12 @@ class Planner(Node):
                 msg_path.poses.append(pose)
                 msg_path.poses.reverse()
                 # publish path
-                self.pub_path_.publish(msg_path)
+                self.linearize_(msg_path)
+                #self.pub_path_.publish(msg_path)
 
-                self.get_logger().info(
-                    f"Length of path = {len(msg_path.poses)}"
-                )
+        #        self.get_logger().info(
+         #           f"Length of path = {len(msg_path.poses)}"
+          #      )
 
                 return
 
@@ -405,8 +410,95 @@ class Planner(Node):
                     nb_node.parent = node
                     heappush(open_list, nb_node) 
 
-        self.get_logger().warn("No Path Found!")
+        #self.get_logger().warn("No Path Found!")
 
+    def linearize_(self, old_path: Path):
+        msg_path = Path()
+        msg_path.header.stamp = self.get_clock().now().to_msg()
+        msg_path.header.frame_id = "map"
+
+        max_idx = len(old_path.poses) - 1
+
+        current_idx = 0
+        target_idx = 1
+
+        # Add in the very first point in the path
+        msg_path.poses.append(old_path.poses[current_idx])
+
+        while target_idx < max_idx:
+
+            current_pose = old_path.poses[current_idx]
+            max_cost = 0
+
+            # Keep going one point further until the line between current and target hits an obstacle
+            while max_cost <= self.max_skipping_cost_:
+                target_idx += 1
+                if target_idx == max_idx:
+                    target_idx += 1
+                    break
+
+                target_pose = old_path.poses[target_idx]
+                
+                dist = hypot(target_pose.pose.position.x - current_pose.pose.position.x, target_pose.pose.position.y - current_pose.pose.position.y)
+                self.get_logger().info(
+                    f"Length of path = {dist}"
+                )
+                if dist > self.max_skipping_dist_:
+                    self.get_logger().info("Saved")
+                    break
+
+                line_poses = self.Bresenham_(current_pose.pose.position.x, current_pose.pose.position.y, target_pose.pose.position.x, target_pose.pose.position.y)
+                
+                for pose in line_poses:
+                    tgt_c, tgt_r = self.XYToCR_(pose.pose.position.x, pose.pose.position.y)
+                    tgt_idx = self.CRToIndex_(tgt_c, tgt_r)
+                    max_cost = max(max_cost, self.costmap_[tgt_idx])
+
+            msg_path.poses.append(old_path.poses[target_idx-1])
+            current_idx = target_idx-1
+
+        self.pub_path_.publish(msg_path)
+        return
+
+    def Bresenham_(self, x1, y1, x2, y2):
+        # Create path object to store all line coordinates
+        line_path = Path()
+        line_path.header.stamp = self.get_clock().now().to_msg()
+        line_path.header.frame_id = "map"
+
+        # Convert x and y coords into c and r
+        c1, r1 = self.XYToCR_(x1, y1)
+        c2, r2 = self.XYToCR_(x2, y2)
+
+        # Use Bresenham's algorithm to generate a set of coordinates between two points
+        dc = abs(c1 - c2)
+        sc = 1 if c1 < c2 else -1
+        dr = -abs(r1 - r2)
+        sr = 1 if r1 < r2 else -1
+        err = dc + dr
+
+        c = c1
+        r = r1
+
+        while True:
+            x, y = self.CRToXY_(c, r)
+            pose = PoseStamped()
+            pose.pose.position.x = x
+            pose.pose.position.y = y
+            line_path.poses.append(pose)
+
+            if 2*err >= dr:
+                if c == c2:
+                    break
+                err += dr
+                c += sc
+            if 2*err <= dc:
+                if r == r2:
+                    break
+                err += dc
+                r += sr
+        
+        return line_path.poses
 
 # Main Boiler Plate =============================================================
 def main(args=None):
