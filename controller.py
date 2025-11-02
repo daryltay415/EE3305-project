@@ -75,7 +75,7 @@ class Controller(Node):
             return  # do not update the path if no path is returned. This will ensure the copied path contains at least one point when the first non-empty path is received.
 
         # !TODO: copy the array from the path
-        self.path_poses_ = [msg.poses] #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        self.path_poses_ = msg.poses #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
         self.received_path_ = True
 
@@ -86,7 +86,7 @@ class Controller(Node):
         self.rbt_y_ = msg.pose.pose.position.y
 
         q = msg.pose.pose.orientation
-        self.rbt_yaw_ = atan2(2*(q.w*q.z+q.x*q.y),(1-2(q.y*q.y + q.z*q.z)))
+        self.rbt_yaw_ = atan2(2*(q.w*q.z+q.x*q.y),(1-2*(q.y*q.y + q.z*q.z)))
         
         self.received_odom_ = True
 
