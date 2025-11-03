@@ -1,4 +1,5 @@
-from math import hypot, atan2, inf, cos, sin
+from math import hypot, atan2, inf, cos, sin, pi, asin
+
 
 import rclpy
 from rclpy.node import Node
@@ -29,6 +30,7 @@ class Controller(Node):
         self.stop_thres_ = self.get_parameter("stop_thres").value
         self.max_lin_vel_ = self.get_parameter("max_lin_vel").value
         self.max_ang_vel_ = self.get_parameter("max_ang_vel").value
+      
 
         # Handles: Topic Subscribers
         # !TODO: path subscriber
@@ -105,6 +107,9 @@ class Controller(Node):
             lookahead_pose = self.path_poses_[self.lookahead_idx_]
             lookahead_x = lookahead_pose.pose.position.x
             lookahead_y = lookahead_pose.pose.position.y
+            final_pose = self.path_poses_[len(self.path_poses_)-1]
+            self.goal_x_ = final_pose.pose.position.x
+            self.goal_y_ = final_pose.pose.position.y
 
             distance = hypot(lookahead_x - self.rbt_x_, lookahead_y - self.rbt_y_)
             if distance > self.lookahead_distance_:
@@ -127,7 +132,6 @@ class Controller(Node):
 
         # Return the coordinates
         return lookahead_x, lookahead_y
-
     # Implement the pure pursuit controller here
     def callbackTimer_(self):
         if not self.received_odom_ or not self.received_path_:
@@ -148,9 +152,17 @@ class Controller(Node):
             local_y = (lookahead_y - self.rbt_y_)*cos(self.rbt_yaw_) - (lookahead_x - self.rbt_x_)*sin(self.rbt_yaw_)
             curve = (2*local_y)/(distance*distance)
 
-            # calculate velocities
-            ang_vel = self.lookahead_lin_vel_*curve
-            lin_vel = self.lookahead_lin_vel_
+            # calculate velocities based on theta as specified in robot control
+            if abs((asin(local_y/distance))*180/pi) > 20:
+                ang_vel = self.lookahead_lin_vel_*curve*1.4
+                lin_vel = self.lookahead_lin_vel_*0.6
+            elif 20 > abs((asin(local_y/distance))*180/pi) > 10:
+                ang_vel = self.lookahead_lin_vel_*curve*1.2
+                lin_vel = self.lookahead_lin_vel_*0.8
+            elif abs((asin(local_y/distance))*180/pi) <= 10:
+                ang_vel = self.lookahead_lin_vel_*curve
+                lin_vel = self.lookahead_lin_vel_*(15/(abs((asin(local_y/distance))*180/pi)))
+
 
         # saturate velocities. The following can result in the wrong curvature,
         # but only when the robot is travelling too fast (which should not occur if well tuned).
@@ -167,6 +179,8 @@ class Controller(Node):
         msg_cmd_vel.twist.linear.x = lin_vel
         msg_cmd_vel.twist.angular.z = ang_vel
         self.pub_cmd_vel_.publish(msg_cmd_vel)
+        print("yaw angle")
+        print((abs(asin(local_y/distance)))*180/pi)
 
 
 # Main Boiler Plate =============================================================
