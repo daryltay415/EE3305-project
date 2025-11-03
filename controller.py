@@ -30,7 +30,7 @@ class Controller(Node):
         self.stop_thres_ = self.get_parameter("stop_thres").value
         self.max_lin_vel_ = self.get_parameter("max_lin_vel").value
         self.max_ang_vel_ = self.get_parameter("max_ang_vel").value
-      
+        self.current_lin_vel = 0.0
 
         # Handles: Topic Subscribers
         # !TODO: path subscriber
@@ -135,17 +135,23 @@ class Controller(Node):
     def getAdaptiveLookaheadPoint_(self):
         # Adaptive lookahead distance based on speed and curvature
         # Base lookahead distance adjusted by current speed
+        print("hello there")
+        minLookahead_distance = 0.2
+        constantTime = 1.0
         base_lookahead = self.lookahead_distance_
-        speed_factor = max(0.1, min(2.0, self.current_lin_vel / self.max_lin_vel_))
-        adaptive_lookahead = base_lookahead * speed_factor
+        #speed_factor = max(minLookahead_distance, min(self.lookahead_distance_, self.current_lin_vel / self.max_lin_vel_))
+        adaptive_lookahead = minLookahead_distance + constantTime * abs(self.current_lin_vel)
+        speed_factor = max(minLookahead_distance, min(self.lookahead_distance_, minLookahead_distance + constantTime*self.current_lin_vel))
+        #adaptive_lookahead = base_lookahead * speed_factor
+        adaptive_lookahead = max(minLookahead_distance, min(1.0, adaptive_lookahead))
 
         # Find the closest point to the robot first
         closest_idx = 0
         closest_distance = float('inf')
 
         for i in range(len(self.path_poses_)):
-            distance = hypot(self.pas_poses[i].pose.position.x - self.rbt_x_, 
-                            self.pas_poses[i].pose.position.y - self.rbt_y_)
+            distance = hypot(self.path_poses_[i].pose.position.x - self.rbt_x_, 
+                            self.path_poses_[i].pose.position.y - self.rbt_y_)
             if distance < closest_distance:
                 closest_distance = distance
                 closest_idx = i
@@ -179,10 +185,10 @@ class Controller(Node):
             self.lookahead_idx_ = lookahead_idx
 
         # Additional adaptation: if we're close to goal, reduce lookahead
-        goal_distance = hypot(self.path_poses_[lookahead_idx].pose.position.x - self.rbt_x_, self.path_poses_[lookahead_idx].pose.position.y - self.rbt_y_)
-        if goal_distance < self.stop_thres_:  # When within 3x stopping threshold of goal
-            lookahead_x = self.path_poses_[lookahead_idx].pose.position.x
-            lookahead_y = self.path_poses_[lookahead_idx].pose.position.y
+        #goal_distance = hypot(self.path_poses_[lookahead_idx].pose.position.x - self.rbt_x_, self.path_poses_[lookahead_idx].pose.position.y - self.rbt_y_)
+        #if goal_distance < self.stop_thres_:  # When within 3x stopping threshold of goal
+        #    lookahead_x = self.path_poses_[lookahead_idx].pose.position.x
+        #    lookahead_y = self.path_poses_[lookahead_idx].pose.position.y
 
         # Publish the lookahead coordinates
         msg_lookahead = PoseStamped()
@@ -193,7 +199,7 @@ class Controller(Node):
         self.pub_lookahead_.publish(msg_lookahead)
 
         # Store current linear velocity for next adaptation
-        self.current_lin_vel = getattr(self, 'current_lin_vel', 0.0)
+       # self.current_lin_vel = getattr(self, 'current_lin_vel', 0.0)
 
         return lookahead_x, lookahead_y
 
@@ -203,7 +209,9 @@ class Controller(Node):
             return  # return silently if path or odom is not received.
 
         # get lookahead point
-        lookahead_x, lookahead_y = self.getLookaheadPoint_()
+        #lookahead_x, lookahead_y = self.getLookaheadPoint_()
+        lookahead_x, lookahead_y = self.getAdaptiveLookaheadPoint_()
+        print(f"lookahead_x = {lookahead_x}")
 
         # get distance to lookahead point (not to be confused with lookahead_distance)
         distance = hypot(lookahead_x - self.rbt_x_, lookahead_y - self.rbt_y_)
@@ -217,6 +225,7 @@ class Controller(Node):
             msg_cmd_vel.twist.linear.x = lin_vel
             msg_cmd_vel.twist.angular.z = ang_vel
             self.pub_cmd_vel_.publish(msg_cmd_vel)
+            self.current_lin_vel = lin_vel
             return
             
         else:
@@ -249,6 +258,7 @@ class Controller(Node):
         # but only when the robot is travelling too fast (which should not occur if well tuned).
         lin_vel = min(lin_vel, self.max_lin_vel_)
         ang_vel = min(ang_vel, self.max_ang_vel_)
+        self.current_lin_vel = lin_vel
 
         self.get_logger().info(
             f"Velocities @ ({lin_vel:7.3f}, {ang_vel:7.3f})"
