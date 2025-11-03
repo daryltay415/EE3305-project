@@ -403,7 +403,11 @@ class Planner(Node):
                     continue
 
                 # Get the relative g-cost and push to open-list
-                newnb_node_g = node.g + hypot(dc,dr) * (self.costmap_[nb_idx] + 1)
+                # octile method
+                s = min(abs(dc),abs(dr))
+                l = max(abs(dc),abs(dr))
+                newnb_node_g = node.g + (s*2**0.5 + l -s) * (self.costmap_[nb_idx] + 1)
+                #newnb_node_g = node.g + hypot(dc,dr) * (self.costmap_[nb_idx] + 1)
                 if newnb_node_g < nb_node.g:
                     nb_node.g = newnb_node_g
                     nb_node.f = newnb_node_g + ((nb_c - goal_c)**2 + (nb_r - goal_r)**2) ** (0.5) 

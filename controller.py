@@ -101,7 +101,6 @@ class Controller(Node):
         # From the closest point, iterate towards the goal and find the first point that is at least a lookahead distance away.
         # Return the goal point if no such lookahead point can be found
         found_point = False
-
         while self.lookahead_idx_ < len(self.path_poses_):
             # Get the lookahead coordinates
             lookahead_pose = self.path_poses_[self.lookahead_idx_]
@@ -119,8 +118,8 @@ class Controller(Node):
             self.lookahead_idx_ += 1
 
         if found_point == False:
-            lookahead_x = self.goal_x_
-            lookahead_y = self.goal_y_
+            lookahead_x = self.path_poses_[-1].pose.position.x
+            lookahead_y = self.path_poses_[-1].pose.position.y
 
         # Publish the lookahead coordinates
         msg_lookahead = PoseStamped()
@@ -132,6 +131,72 @@ class Controller(Node):
 
         # Return the coordinates
         return lookahead_x, lookahead_y
+
+    def getAdaptiveLookaheadPoint_(self):
+        # Adaptive lookahead distance based on speed and curvature
+        # Base lookahead distance adjusted by current speed
+        base_lookahead = self.lookahead_distance_
+        speed_factor = max(0.1, min(2.0, self.current_lin_vel / self.max_lin_vel_))
+        adaptive_lookahead = base_lookahead * speed_factor
+
+        # Find the closest point to the robot first
+        closest_idx = 0
+        closest_distance = float('inf')
+
+        for i in range(len(self.path_poses_)):
+            distance = hypot(self.pas_poses[i].pose.position.x - self.rbt_x_, 
+                            self.pas_poses[i].pose.position.y - self.rbt_y_)
+            if distance < closest_distance:
+                closest_distance = distance
+                closest_idx = i
+
+        # Start searching from the closest point forward
+        lookahead_idx = closest_idx
+        found_point = False
+
+        while lookahead_idx < len(self.path_poses_):
+            lookahead_pose = self.path_poses_[lookahead_idx]
+            lookahead_x = lookahead_pose.pose.position.x
+            lookahead_y = lookahead_pose.pose.position.y
+
+            distance = hypot(lookahead_x - self.rbt_x_, lookahead_y - self.rbt_y_)
+
+            # Adaptive threshold - allow some tolerance
+            if distance >= adaptive_lookahead * 0.8:  # 80% of adaptive lookahead
+                found_point = True
+                break
+
+            lookahead_idx += 1
+
+        # If no suitable point found, use the goal
+        if not found_point or lookahead_idx >= len(self.path_poses_):
+            lookahead_idx = len(self.path_poses_) - 1
+            lookahead_x = self.path_poses_[lookahead_idx].pose.position.x
+            lookahead_y = self.path_poses_[lookahead_idx].pose.position.y
+            
+        else:
+            # Store for next iteration
+            self.lookahead_idx_ = lookahead_idx
+
+        # Additional adaptation: if we're close to goal, reduce lookahead
+        goal_distance = hypot(self.path_poses_[lookahead_idx].pose.position.x - self.rbt_x_, self.path_poses_[lookahead_idx].pose.position.y - self.rbt_y_)
+        if goal_distance < self.stop_thres_:  # When within 3x stopping threshold of goal
+            lookahead_x = self.path_poses_[lookahead_idx].pose.position.x
+            lookahead_y = self.path_poses_[lookahead_idx].pose.position.y
+
+        # Publish the lookahead coordinates
+        msg_lookahead = PoseStamped()
+        msg_lookahead.header.stamp = self.get_clock().now().to_msg()
+        msg_lookahead.header.frame_id = "map"
+        msg_lookahead.pose.position.x = lookahead_x
+        msg_lookahead.pose.position.y = lookahead_y
+        self.pub_lookahead_.publish(msg_lookahead)
+
+        # Store current linear velocity for next adaptation
+        self.current_lin_vel = getattr(self, 'current_lin_vel', 0.0)
+
+        return lookahead_x, lookahead_y
+
     # Implement the pure pursuit controller here
     def callbackTimer_(self):
         if not self.received_odom_ or not self.received_path_:
@@ -142,11 +207,18 @@ class Controller(Node):
 
         # get distance to lookahead point (not to be confused with lookahead_distance)
         distance = hypot(lookahead_x - self.rbt_x_, lookahead_y - self.rbt_y_)
-
+        #distance_to_goal = hypot(self.goal_x_ - self.rbt_x_, self.goal_y_ - self.rbt_y_)
         # stop the robot if close to the point.
         if distance < self.stop_thres_:
             lin_vel = 0.0
             ang_vel = 0.0
+            msg_cmd_vel = TwistStamped()
+            msg_cmd_vel.header.stamp = self.get_clock().now().to_msg()
+            msg_cmd_vel.twist.linear.x = lin_vel
+            msg_cmd_vel.twist.angular.z = ang_vel
+            self.pub_cmd_vel_.publish(msg_cmd_vel)
+            return
+            
         else:
             # get curvature
             local_y = (lookahead_y - self.rbt_y_)*cos(self.rbt_yaw_) - (lookahead_x - self.rbt_x_)*sin(self.rbt_yaw_)
