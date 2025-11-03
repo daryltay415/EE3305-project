@@ -153,7 +153,16 @@ class Controller(Node):
             curve = (2*local_y)/(distance*distance)
 
             # calculate velocities based on theta as specified in robot control
-            if abs((asin(local_y/distance))*180/pi) > 20:
+            if abs((asin(local_y/distance))*180/pi) >= 80:
+                ang_vel = self.lookahead_lin_vel_*curve*1.4
+                lin_vel = self.lookahead_lin_vel_*0.2
+            elif 80 > abs((asin(local_y/distance))*180/pi) > 60:
+                ang_vel = self.lookahead_lin_vel_*curve*1.4
+                lin_vel = self.lookahead_lin_vel_*0.3
+            elif abs((asin(local_y/distance))*180/pi) > 40:
+                ang_vel = self.lookahead_lin_vel_*curve*1.4
+                lin_vel = self.lookahead_lin_vel_*0.4
+            elif 40> abs((asin(local_y/distance))*180/pi) > 20:
                 ang_vel = self.lookahead_lin_vel_*curve*1.4
                 lin_vel = self.lookahead_lin_vel_*0.6
             elif 20 > abs((asin(local_y/distance))*180/pi) > 10:
