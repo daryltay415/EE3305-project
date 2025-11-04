@@ -444,11 +444,8 @@ class Planner(Node):
                 target_pose = old_path.poses[target_idx]
                 
                 dist = hypot(target_pose.pose.position.x - current_pose.pose.position.x, target_pose.pose.position.y - current_pose.pose.position.y)
-                self.get_logger().info(
-                    f"Length of path = {dist}"
-                )
+                
                 if dist > self.max_skipping_dist_:
-                    self.get_logger().info("Saved")
                     break
 
                 line_poses = self.Bresenham_(current_pose.pose.position.x, current_pose.pose.position.y, target_pose.pose.position.x, target_pose.pose.position.y)
