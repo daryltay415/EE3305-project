@@ -26,6 +26,7 @@ class Controller(Node):
         self.declare_parameter("K_p", float(0.1))
         self.declare_parameter("K_i", float(0.0))
         self.declare_parameter("K_d", float(0.0))
+        self.declare_parameter("startup_threshold", float(0.1))
 
         # Parameters: Get Values
         self.frequency_ = self.get_parameter("frequency").value
@@ -38,6 +39,7 @@ class Controller(Node):
         self.K_p_ = self.get_parameter("K_p").value
         self.K_i_ = self.get_parameter("K_i").value
         self.K_d_ = self.get_parameter("K_d").value
+        self.startup_threshold_ = self.get_parameter("startup_threshold").value
         self.current_lin_vel = 0.0
 
         # Handles: Topic Subscribers
@@ -76,6 +78,7 @@ class Controller(Node):
         self.received_odom_ = False
         self.received_path_ = False
         self.reach_goal_ = False
+        self.startup_ = True
         self.lookahead_idx_ = 0
 
         # Instance PID Variables
@@ -156,6 +159,7 @@ class Controller(Node):
                 if self.lookahead_idx_ == (len(self.path_poses_) - 1):
                     self.lookahead_idx_ = -1
                     self.reach_goal_ = True
+                    # self.reset()
                     break
             
         # msg_lookahead = self.path_poses_[self.lookahead_idx_]
@@ -244,63 +248,77 @@ class Controller(Node):
         if not self.received_odom_ or not self.received_path_:
             return  # return silently if path or odom is not received.
 
+
         # get lookahead point
         lookahead_x, lookahead_y = self.getBoundaryLookaheadPoint_()
         #lookahead_x, lookahead_y = self.getAdaptiveLookaheadPoint_()
-        #print(f"lookahead_x = {lookahead_x}")
 
-        # get distance to lookahead point (not to be confused with lookahead_distance)
-        distance = hypot(lookahead_x - self.rbt_x_, lookahead_y - self.rbt_y_)
-        #distance_to_goal = hypot(self.goal_x_ - self.rbt_x_, self.goal_y_ - self.rbt_y_)
-        # stop the robot if close to the point.
-        if self.reach_goal_:
+        if self.startup_:
             lin_vel = 0.0
-            ang_vel = 0.0
-            msg_cmd_vel = TwistStamped()
-            msg_cmd_vel.header.stamp = self.get_clock().now().to_msg()
-            msg_cmd_vel.twist.linear.x = lin_vel
-            msg_cmd_vel.twist.angular.z = ang_vel
-            self.pub_cmd_vel_.publish(msg_cmd_vel)
-            self.current_lin_vel = lin_vel
-            return
-            
-        else:
-            lin_vel = self.max_lin_vel_
             target_angle = atan2(lookahead_y - self.rbt_y_, lookahead_x - self.rbt_x_)
-            
-            if abs(target_angle - self.rbt_yaw_) > pi:
+
+            if abs(target_angle - self.rbt_yaw_) < self.startup_threshold_:
+                ang_vel = 0.0
+                self.startup_ = False
+            elif abs(target_angle - self.rbt_yaw_) > pi:
                 if target_angle < -(pi/2):
                     ang_vel = self.angle_PID(target_angle + 2*pi, self.rbt_yaw_)
                 else:
                     ang_vel = self.angle_PID(target_angle, self.rbt_yaw_ + 2*pi)
             else:
                 ang_vel = self.angle_PID(target_angle, self.rbt_yaw_)
+        else:
+            # get distance to lookahead point (not to be confused with lookahead_distance)
+            distance = hypot(lookahead_x - self.rbt_x_, lookahead_y - self.rbt_y_)
+            #distance_to_goal = hypot(self.goal_x_ - self.rbt_x_, self.goal_y_ - self.rbt_y_)
+            # stop the robot if close to the point.
+            if self.reach_goal_:
+                lin_vel = 0.0
+                ang_vel = 0.0
+                msg_cmd_vel = TwistStamped()
+                msg_cmd_vel.header.stamp = self.get_clock().now().to_msg()
+                msg_cmd_vel.twist.linear.x = lin_vel
+                msg_cmd_vel.twist.angular.z = ang_vel
+                self.pub_cmd_vel_.publish(msg_cmd_vel)
+                self.current_lin_vel = lin_vel
+                return   
+            else:
+                lin_vel = self.max_lin_vel_
+                target_angle = atan2(lookahead_y - self.rbt_y_, lookahead_x - self.rbt_x_)
+                
+                if abs(target_angle - self.rbt_yaw_) > pi:
+                    if target_angle < -(pi/2):
+                        ang_vel = self.angle_PID(target_angle + 2*pi, self.rbt_yaw_)
+                    else:
+                        ang_vel = self.angle_PID(target_angle, self.rbt_yaw_ + 2*pi)
+                else:
+                    ang_vel = self.angle_PID(target_angle, self.rbt_yaw_)
 
-            # get curvature
-            # local_y = (lookahead_y - self.rbt_y_)*cos(self.rbt_yaw_) - (lookahead_x - self.rbt_x_)*sin(self.rbt_yaw_)
-            # curve = (2*local_y)/(distance*distance)
+                # get curvature
+                # local_y = (lookahead_y - self.rbt_y_)*cos(self.rbt_yaw_) - (lookahead_x - self.rbt_x_)*sin(self.rbt_yaw_)
+                # curve = (2*local_y)/(distance*distance)
 
-            # calculate velocities based on theta as specified in robot control
-            # if abs((asin(local_y/distance))*180/pi) >= 80:
-            #     ang_vel = self.lookahead_lin_vel_*curve*1.4
-            #     lin_vel = self.lookahead_lin_vel_*0.2
-            # elif 80 > abs((asin(local_y/distance))*180/pi) > 60:
-            #     ang_vel = self.lookahead_lin_vel_*curve*1.4
-            #     lin_vel = self.lookahead_lin_vel_*0.3
-            # elif abs((asin(local_y/distance))*180/pi) > 40:
-            #     ang_vel = self.lookahead_lin_vel_*curve*1.4
-            #     lin_vel = self.lookahead_lin_vel_*0.4
-            # elif 40> abs((asin(local_y/distance))*180/pi) > 20:
-            #     ang_vel = self.lookahead_lin_vel_*curve*1.4
-            #     lin_vel = self.lookahead_lin_vel_*0.6
-            # elif 20 > abs((asin(local_y/distance))*180/pi) > 10:
-            #     ang_vel = self.lookahead_lin_vel_*curve*1.2
-            #     lin_vel = self.lookahead_lin_vel_*0.8
-            # elif abs((asin(local_y/distance))*180/pi) <= 10:
-            #     ang_vel = self.lookahead_lin_vel_*curve
-            #     lin_vel = self.lookahead_lin_vel_*(15/(abs((asin(local_y/distance))*180/pi)))
+                # calculate velocities based on theta as specified in robot control
+                # if abs((asin(local_y/distance))*180/pi) >= 80:
+                #     ang_vel = self.lookahead_lin_vel_*curve*1.4
+                #     lin_vel = self.lookahead_lin_vel_*0.2
+                # elif 80 > abs((asin(local_y/distance))*180/pi) > 60:
+                #     ang_vel = self.lookahead_lin_vel_*curve*1.4
+                #     lin_vel = self.lookahead_lin_vel_*0.3
+                # elif abs((asin(local_y/distance))*180/pi) > 40:
+                #     ang_vel = self.lookahead_lin_vel_*curve*1.4
+                #     lin_vel = self.lookahead_lin_vel_*0.4
+                # elif 40> abs((asin(local_y/distance))*180/pi) > 20:
+                #     ang_vel = self.lookahead_lin_vel_*curve*1.4
+                #     lin_vel = self.lookahead_lin_vel_*0.6
+                # elif 20 > abs((asin(local_y/distance))*180/pi) > 10:
+                #     ang_vel = self.lookahead_lin_vel_*curve*1.2
+                #     lin_vel = self.lookahead_lin_vel_*0.8
+                # elif abs((asin(local_y/distance))*180/pi) <= 10:
+                #     ang_vel = self.lookahead_lin_vel_*curve
+                #     lin_vel = self.lookahead_lin_vel_*(15/(abs((asin(local_y/distance))*180/pi)))
 
-
+        
         # saturate velocities. The following can result in the wrong curvature,
         # but only when the robot is travelling too fast (which should not occur if well tuned).
         lin_vel = min(lin_vel, self.max_lin_vel_)
@@ -319,6 +337,7 @@ class Controller(Node):
         self.pub_cmd_vel_.publish(msg_cmd_vel)
         print(f"yaw angle: {self.rbt_yaw_}")
 
+
     def angle_PID(self, target, current):
 
         err = target - current
@@ -336,8 +355,18 @@ class Controller(Node):
 
         return err*self.K_p_ + self.integral*self.K_i_ + derivative*self.K_d_
 
-        
+    def reset_(self):
+        # Other Instance Variables
+        self.received_odom_ = False
+        self.received_path_ = False
+        self.reach_goal_ = False
+        self.startup_ = True
+        self.lookahead_idx_ = 0
 
+        # Instance PID Variables
+        self.integral = 0
+        self.time = 0
+        self.prev_err = 0
 
 class Line():
     def __init__(self, point_on_line: PoseStamped, point_perp: PoseStamped):
@@ -372,8 +401,6 @@ class Line():
     
     def has_crossed_line(self, x, y):
         return self.get_side(x, y) != self.approach_side
-
-
 
 def process_paths(way_points, turn_dist):
     finish_line_idx = len(way_points.poses) - 1
