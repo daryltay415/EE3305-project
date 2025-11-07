@@ -99,6 +99,7 @@ class Controller(Node):
         self.path_poses_ = msg.poses
         self.turn_boundaries = process_paths(msg, self.turn_dist_)
 
+        self.reset_()
         self.received_path_ = True
 
     # Odometry subscriber callback

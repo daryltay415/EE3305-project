@@ -17,6 +17,10 @@ class Behavior(Node):
         self.declare_parameter("frequency", float(10))
         self.declare_parameter("plan_frequency", float(2))
 
+        # Variables: Declare
+        self.old_goal_x = 1e99
+        self.old_goal_y = 1e99
+
         # Parameters: Get Values
         self.frequency_ = self.get_parameter("frequency").value
         self.plan_frequency_ = self.get_parameter("plan_frequency").value
@@ -80,8 +84,8 @@ class Behavior(Node):
         self.received_rbt_coords_ = True
 
         # !TODO: Copy to rbt_x_, rbt_y_. IN PROGRESS
-        self.rbt_x_ = msg.pose.pose.orientation.x
-        self.rbt_y_ = msg.pose.pose.orientation.y
+        self.rbt_x_ = msg.pose.pose.position.x
+        self.rbt_y_ = msg.pose.pose.position.y
 
     # Callback for timer.
     # Normally the decisions of the robot system are made here, and this callback is dramatically simplified.
@@ -112,6 +116,12 @@ class Behavior(Node):
     def callbackTimerPlan_(self):
         if not self.received_goal_coords_ or not self.received_rbt_coords_:
             return  # silently return if none of the coords are received from the subscribers
+
+        if self.old_goal_x == self.goal_x_ and self.old_goal_y == self.goal_y_:
+            return
+        
+        self.old_goal_x = self.goal_x_
+        self.old_goal_y = self.goal_y_
 
         # Create a new message for publishing
         msg_path_request = Path()
