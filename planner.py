@@ -23,7 +23,6 @@ class DijkstraNode:
         self.expanded = False
 
     def __lt__(self, other):  # comparator for heapq (min-heap) sorting
-        #return self.g < other.g
         return self.f < other.f
 
 
@@ -58,7 +57,6 @@ class Planner(Node):
             qos_profile_latch,
         )
 
-        # !TODO: Path request subscriber
         self.sub_path_request_ = self.create_subscription(
             Path,
             "path_request",
@@ -67,7 +65,6 @@ class Planner(Node):
         )
 
         # Handles: Publishers
-        # !TODO: Path publisher
         self.pub_path_ = self.create_publisher(
             Path,
             "path",
@@ -85,9 +82,6 @@ class Planner(Node):
 
     # Path request subscriber callback
     def callbackSubPathRequest_(self, msg: Path):   
-        
-        # !TODO: write to rbt_x_, rbt_y_, goal_x_, goal_y_
-        # 0, 1?
         self.rbt_x_ = msg.poses[0].pose.position.x
         self.rbt_y_ = msg.poses[0].pose.position.y
         self.goal_x_ = msg.poses[1].pose.position.x
@@ -97,8 +91,6 @@ class Planner(Node):
     # Global costmap subscriber callback
     # This is only run once because the costmap is only published once, at the start of the launch.
     def callbackSubGlobalCostmap_(self, msg: OccupancyGrid):
-        
-        # !TODO: write to costmap_, costmap_resolution_, costmap_origin_x_, costmap_origin_y_, costmap_rows_, costmap_cols_
         self.costmap_ = list(msg.data)
         self.costmap_resolution = msg.info.resolution
         self.costmap_cols_ = msg.info.width
@@ -141,15 +133,10 @@ class Planner(Node):
         pose.pose.position.y = goal_y
         msg_path.poses.append(pose)
 
-        # Reverse the path (hint)
         msg_path.poses.reverse()
 
         # publish the path
         self.pub_path_.publish(msg_path)
-
-    #    self.get_logger().info(
-     #       f"Publishing interpolated path between Start and Goal. Implement dijkstra_() instead."
-      #  )
 
     # Converts world coordinates to cell column and cell row.
     def XYToCR_(self, x, y):
@@ -184,27 +171,16 @@ class Planner(Node):
     # Runs the path planning algorithm based on the world coordinates.
     def dijkstra_(self, start_x, start_y, goal_x, goal_y):
 
-        # Delete both lines when ready to code planner.py -----------------
-        #self.publishInterpolatedPath(start_x, start_y, goal_x, goal_y)
-        #return
-
         # Initializations ---------------------------------
-
-        # Initialize nodes
-        #nodes = [DijkstraNode(0, 0)]  # replace this
-        #print(f"costmap: {self.costmap_}")
-        #testx, testy = self.XYToCR_(-5.275,-4.945)
-        #testx, testy = self.CRToXY_(9,4)
-        #print(f"testx = {testx}, testy = {testy}, originx = {self.costmap_origin_x_}, originy = {self.costmap_origin_y_}, reso = {self.costmap_resolution}")
+        
         nodes = []
         for r in range(self.costmap_rows_):
             for c in range(self.costmap_cols_):
                 nodes.append(DijkstraNode(c,r))
-        
-
+            
         # Initialize start and goal
         rbt_c, rbt_r = self.XYToCR_(start_x, start_y)
-        goal_c, goal_r = self.XYToCR_(goal_x, goal_y)  # replace this
+        goal_c, goal_r = self.XYToCR_(goal_x, goal_y)
         rbt_idx = self.CRToIndex_(rbt_c, rbt_r)
         start_node = nodes[rbt_idx]
         start_node.g = 0
@@ -245,12 +221,9 @@ class Planner(Node):
                 pose.pose.position.y = worldy
                 msg_path.poses.append(pose)
                 msg_path.poses.reverse()
+
                 # publish path
                 self.pub_path_.publish(msg_path)
-
-        #        self.get_logger().info(
-         #           f"Path Found from Rbt @ ({start_x:7.3f}, {start_y:7.3f}) to Goal @ ({goal_x:7.3f},{goal_y:7.3f})"
-          #      )
 
                 return
 
@@ -270,11 +243,7 @@ class Planner(Node):
                 nb_c = dc + node.c
                 nb_r = dr + node.r
                 
-                #nb_idx = 0 * nb_c * nb_r
                 nb_idx = self.CRToIndex_(nb_c, nb_r)
-                #print(f"dc = {dc}, node.c = {node.c}, nb_c = {nb_c}")
-                #print(f"dr = {dr}, node.c = {node.r}, nb_c = {nb_r}")
-                #print(f"nb_idx = {nb_idx}, rows = {self.costmap_rows_}, cols = {self.costmap_cols_}")
 
                 # Continue if out of map
                 if self.outOfMap_(nb_c, nb_r):
@@ -293,25 +262,15 @@ class Planner(Node):
 
                 # Get the relative g-cost and push to open-list
                 newnb_node_g = node.g + hypot(dc,dr) * (self.costmap_[nb_idx] + 1)
-                #print(f"self.costmap = {self.costmap_[nb_idx]}, newnb_nodeg={newnb_node_g}")
                 if newnb_node_g < nb_node.g:
                     nb_node.g = newnb_node_g
                     nb_node.parent = node
                     heappush(open_list, nb_node) 
 
-        #self.get_logger().warn("No Path Found!")
-
     # Runs the path planning algorithm based on the world coordinates.
     def aStar_(self, start_x, start_y, goal_x, goal_y):
-
-        # Delete both lines when ready to code planner.py -----------------
-        #self.publishInterpolatedPath(start_x, start_y, goal_x, goal_y)
-        #return
-
         # Initializations ---------------------------------
 
-        # Initialize nodes
-        #nodes = [DijkstraNode(0, 0)]  # replace this
         nodes = []
         for r in range(self.costmap_rows_):
             for c in range(self.costmap_cols_):
@@ -320,7 +279,7 @@ class Planner(Node):
 
         # Initialize start and goal
         rbt_c, rbt_r = self.XYToCR_(start_x, start_y)
-        goal_c, goal_r = self.XYToCR_(goal_x, goal_y)  # replace this
+        goal_c, goal_r = self.XYToCR_(goal_x, goal_y)
         rbt_idx = self.CRToIndex_(rbt_c, rbt_r)
         start_node = nodes[rbt_idx]
         start_node.g = 0
@@ -360,13 +319,10 @@ class Planner(Node):
                 pose.pose.position.y = worldy
                 msg_path.poses.append(pose)
                 msg_path.poses.reverse()
-                # publish path
+
+                # Publish path
                 self.linearize_(msg_path)
                 #self.pub_path_.publish(msg_path)
-
-        #        self.get_logger().info(
-         #           f"Length of path = {len(msg_path.poses)}"
-          #      )
 
                 return
 
@@ -384,7 +340,6 @@ class Planner(Node):
                 # Get neighbor coordinates and neighbor
                 nb_c = dc + node.c
                 nb_r = dr + node.r
-                #nb_idx = 0 * nb_c * nb_r
                 nb_idx = self.CRToIndex_(nb_c, nb_r)
 
                 # Continue if out of map
@@ -407,14 +362,11 @@ class Planner(Node):
                 s = min(abs(dc),abs(dr))
                 l = max(abs(dc),abs(dr))
                 newnb_node_g = node.g + (s*2**0.5 + l -s) * (self.costmap_[nb_idx] + 1)
-                #newnb_node_g = node.g + hypot(dc,dr) * (self.costmap_[nb_idx] + 1)
                 if newnb_node_g < nb_node.g:
                     nb_node.g = newnb_node_g
                     nb_node.f = newnb_node_g + ((nb_c - goal_c)**2 + (nb_r - goal_r)**2) ** (0.5) 
                     nb_node.parent = node
                     heappush(open_list, nb_node) 
-
-        #self.get_logger().warn("No Path Found!")
 
     def linearize_(self, old_path: Path):
         msg_path = Path()

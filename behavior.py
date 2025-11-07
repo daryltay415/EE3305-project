@@ -26,7 +26,6 @@ class Behavior(Node):
         self.plan_frequency_ = self.get_parameter("plan_frequency").value
 
         # Handles: Topic Subscribers
-        # !TODO: Goal pose subscriber IN PROGRESS
         self.sub_goal_pose = self.create_subscription(
             PoseStamped,
             "goal_pose",
@@ -34,7 +33,6 @@ class Behavior(Node):
             10,
         )
 
-        # !TODO: Odometry subscriber IN PROGRESS
         self.sub_odom_ = self.create_subscription(
             Odometry,
             "odom",
@@ -43,7 +41,6 @@ class Behavior(Node):
         )
 
         # Handles: Topic Publishers
-        # !TODO: Path request publisher IN PROGRESS
         self.pub_path_request_ = self.create_publisher(
             Path, 
             "path_request", 
@@ -71,19 +68,13 @@ class Behavior(Node):
             True  # "cancel" the goal and trigger the if condition in timer.
         )
 
-        # !TODO: Copy to goal_x_, goal_y_. IN PROGRESS
         self.goal_x_ = msg.pose.position.x
         self.goal_y_ = msg.pose.position.y
-
-    #    self.get_logger().info(
-     #       f"Received New Goal @ ({self.goal_x_:7.3f}, {self.goal_y_:7.3f})."
-      #  )
 
     # Odometry subscriber callback.
     def callbackSubOdom_(self, msg: Odometry):
         self.received_rbt_coords_ = True
 
-        # !TODO: Copy to rbt_x_, rbt_y_. IN PROGRESS
         self.rbt_x_ = msg.pose.pose.position.x
         self.rbt_y_ = msg.pose.pose.position.y
 
@@ -100,14 +91,8 @@ class Behavior(Node):
         goal_is_close = hypot(dx, dy) < 0.1
 
         if goal_is_close and not self.goal_reached_:
-        #    self.get_logger().info(
-         #       f"Reached Goal @ ({self.goal_x_:7.3f}, {self.goal_y_:7.3f})."
-          #  )
             self.goal_reached_ = True
         elif not goal_is_close and self.goal_reached_:
-        #    self.get_logger().info(
-         #       f"Going to Goal @ ({self.goal_x_:7.3f}, {self.goal_y_:7.3f})."
-          #  )
             self.goal_reached_ = False
 
     # Callback for publishing path requests between clicked_point (goal) and robot position.
@@ -117,6 +102,7 @@ class Behavior(Node):
         if not self.received_goal_coords_ or not self.received_rbt_coords_:
             return  # silently return if none of the coords are received from the subscribers
 
+        # Only call to compute a new path if the goal has changed
         if self.old_goal_x == self.goal_x_ and self.old_goal_y == self.goal_y_:
             return
         
@@ -128,24 +114,21 @@ class Behavior(Node):
         msg_path_request.header.stamp = self.get_clock().now().to_msg()
         msg_path_request.header.frame_id = "map"
 
-        # !TODO: write the robot coordinates IN PROGRESS
+        # Write the robot coordinates
         rbt_pose = PoseStamped()
         rbt_pose.pose.position.x = self.rbt_x_
         rbt_pose.pose.position.y = self.rbt_y_
 
-        # !TODO: write the goal coordinates IN PROGRESS
+        # Write the goal coordinates
         goal_pose = PoseStamped()
         goal_pose.pose.position.x = self.goal_x_
         goal_pose.pose.position.y = self.goal_y_
         
-        # !TODO: fill up the array containing the robot coordinates at [0] and goal coordinates at [1]
+        # Fill up the array containing the robot coordinates at [0] and goal coordinates at [1]
         msg_path_request.poses.append(rbt_pose)
         msg_path_request.poses.append(goal_pose)
 
         # publish the message
-    #    self.get_logger().info(
-     #       f"Sending Path Planning Request from Rbt @ ({self.rbt_x_:7.3f}, {self.rbt_y_:7.3f}) to Goal @ ({self.goal_x_:7.3f}, {self.goal_y_:7.3f})"
-      #  )
         self.pub_path_request_.publish(msg_path_request)
 
 

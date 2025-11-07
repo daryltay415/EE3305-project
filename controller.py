@@ -45,14 +45,13 @@ class Controller(Node):
         self.current_lin_vel = 0.0
 
         # Handles: Topic Subscribers
-        # !TODO: path subscriber
         self.sub_path_ = self.create_subscription(
             Path,
             "path",
             self.callbackSubPath_,
             10,
         )
-        # !TODO: odometry subscriber
+
         self.sub_odom_ = self.create_subscription(
             Odometry,
             "odom",
@@ -61,18 +60,18 @@ class Controller(Node):
         )
 
         # Handles: Topic Publishers
-        # !TODO: command velocities publisher
         self.pub_cmd_vel_ = self.create_publisher(
             TwistStamped, 
             "cmd_vel", 
             10,
         )
-        # !TODO: lookahead point publisher
+
         self.pub_lookahead_ = self.create_publisher(
             PoseStamped, 
             "lookahead", 
             10,
         )
+
         # Handles: Timers
         self.timer = self.create_timer(1.0 / self.frequency_, self.callbackTimer_)
 
@@ -104,7 +103,6 @@ class Controller(Node):
 
     # Odometry subscriber callback
     def callbackSubOdom_(self, msg: Odometry):
-        # !TODO: write robot pose to rbt_x_, rbt_y_, rbt_yaw_
         self.rbt_x_ = msg.pose.pose.position.x
         self.rbt_y_ = msg.pose.pose.position.y
 
@@ -162,10 +160,7 @@ class Controller(Node):
                 if self.lookahead_idx_ == (len(self.path_poses_) - 1):
                     self.lookahead_idx_ = -1
                     self.reach_goal_ = True
-                    # self.reset()
                     break
-            
-        # msg_lookahead = self.path_poses_[self.lookahead_idx_]
 
         # Currently display point at which it starts turning, early to reaching the point
         msg_lookahead = self.turn_boundaries[self.lookahead_idx_].point1
@@ -178,7 +173,6 @@ class Controller(Node):
     def getAdaptiveLookaheadPoint_(self):
         # Adaptive lookahead distance based on speed and curvature
         # Base lookahead distance adjusted by current speed
-        print("hello there")
         minLookahead_distance = 0.2
         constantTime = 1.0
         base_lookahead = self.lookahead_distance_
@@ -273,7 +267,6 @@ class Controller(Node):
         else:
             # get distance to lookahead point (not to be confused with lookahead_distance)
             distance = hypot(lookahead_x - self.rbt_x_, lookahead_y - self.rbt_y_)
-            #distance_to_goal = hypot(self.goal_x_ - self.rbt_x_, self.goal_y_ - self.rbt_y_)
             # stop the robot if close to the point.
             if self.reach_goal_:
                 lin_vel = 0.0
@@ -287,8 +280,8 @@ class Controller(Node):
                 return   
             else:
                 lin_vel = self.speed_sigmoid_controller(self.rbt_x_, self.rbt_y_)
-                #lin_vel = self.max_lin_vel_ * self.speed_sigmoid_controller
-                #angle PID controller
+
+                # angle PID controller
                 target_angle = atan2(lookahead_y - self.rbt_y_, lookahead_x - self.rbt_x_)
             
                 if abs(target_angle - self.rbt_yaw_) > pi:
@@ -298,41 +291,12 @@ class Controller(Node):
                         ang_vel = self.angle_PID(target_angle, self.rbt_yaw_ + 2*pi)
                 else:
                     ang_vel = self.angle_PID(target_angle, self.rbt_yaw_)
-
-                #get curvature
-                local_y = (lookahead_y - self.rbt_y_)*cos(self.rbt_yaw_) - (lookahead_x - self.rbt_x_)*sin(self.rbt_yaw_)
-                curve = (2*local_y)/(distance*distance)
-
-                #calculate velocities based on theta as specified in robot control
-                #if abs((asin(local_y/distance))*180/pi) >= 80:
-                #    ang_vel = self.lookahead_lin_vel_*curve*1.4
-                #    lin_vel = self.max_lin_vel_*0.2
-                #elif 80 > abs((asin(local_y/distance))*180/pi) > 60:
-                #    ang_vel = self.lookahead_lin_vel_*curve*1.4
-                #    lin_vel = self.max_lin_vel_*0.3
-                #elif abs((asin(local_y/distance))*180/pi) > 40:
-                #    ang_vel = self.lookahead_lin_vel_*curve*1.4
-                #    lin_vel = self.max_lin_vel_*0.4
-                #elif 40> abs((asin(local_y/distance))*180/pi) > 20:
-                #    ang_vel = self.lookahead_lin_vel_*curve*1.4
-                #    lin_vel = self.max_lin_vel_*0.6
-                #elif 20 > abs((asin(local_y/distance))*180/pi) > 10:
-                #    ang_vel = self.lookahead_lin_vel_*curve*1.2
-                #    lin_vel = self.max_lin_vel_*0.8
-                #elif abs((asin(local_y/distance))*180/pi) <= 10:
-                #    ang_vel = self.lookahead_lin_vel_*curve
-                #    lin_vel = self.max_lin_vel_
-
         
         # saturate velocities. The following can result in the wrong curvature,
         # but only when the robot is travelling too fast (which should not occur if well tuned).
         lin_vel = min(lin_vel, self.max_lin_vel_)
         ang_vel = min(ang_vel, self.max_ang_vel_)
         self.current_lin_vel = lin_vel
-
-        # self.get_logger().info(
-        #     f"Velocities @ ({lin_vel:7.3f}, {ang_vel:7.3f})"
-        # )
 
         # publish velocities
         msg_cmd_vel = TwistStamped()
@@ -360,7 +324,6 @@ class Controller(Node):
 
         return err*self.K_p_ + self.integral*self.K_i_ + derivative*self.K_d_
     
-    #target = lookahead, current = robot current pos
     def speed_sigmoid_controller(self, current_x_, current_y_):
 
         lookahead_pose = self.path_poses_[self.lookahead_idx_]
@@ -375,6 +338,11 @@ class Controller(Node):
     
 
     def reset_(self):
+        # PID Instance Variables
+        self.integral = 0
+        self.time = 0
+        self.prev_err = 0
+
         # Other Instance Variables
         self.received_odom_ = False
         self.received_path_ = False
@@ -382,11 +350,10 @@ class Controller(Node):
         self.startup_ = True
         self.lookahead_idx_ = 0
 
-        # Instance PID Variables
-        self.integral = 0
-        self.time = 0
-        self.prev_err = 0
-
+# Boundary line before each path point, perpendicular to the line between 
+# the point and its predecessor.
+# Provides a more accurate and lightweight description of when a robot has passed
+# the rthreshold at which it should look to the next point 
 class Line():
     def __init__(self, point_on_line: PoseStamped, point_perp: PoseStamped):
         vertical_line_gradient = 1.e5
@@ -418,9 +385,12 @@ class Line():
     def get_side(self, x, y):
         return (x-self.point1.pose.position.x)*(self.point2.pose.position.y-self.point1.pose.position.y) > (y-self.point1.pose.position.y)*(self.point2.pose.position.x-self.point1.pose.position.x)
     
+    # Determines if a specific robot position is beyond the boundary line
     def has_crossed_line(self, x, y):
         return self.get_side(x, y) != self.approach_side
 
+# From a set of path poses, create a list of boundary lines a distance of 
+# turn_dist away from their associated path point
 def process_paths(way_points, turn_dist):
     finish_line_idx = len(way_points.poses) - 1
     turn_boundaries = []
@@ -450,31 +420,7 @@ def process_paths(way_points, turn_dist):
 
         previous_point = turn_boundary_point
     
-    return turn_boundaries
-
-
-    # def __init__(self, way_points, start_pos, turn_dst):
-    #     self.look_points = way_points
-    #     finish_line_idx = len(self.look_points) - 1
-        
-    #     turn_boundaries = []
-
-    #     previous_point = start_pos
-    #     for i in range(len(self.look_points)):
-    #         current_point = self.look_points[i]
-            
-    #         dir_to_current_point = [current_point[0] - previous_point[0], current_point[1] - previous_point[1]]
-    #         d = hypot(dir_to_current_point[0], dir_to_current_point[1])
-    #         dir_to_current_point = [dir_to_current_point[0]/d, dir_to_current_point[1]/d]
-            
-    #         turn_boundary_point = current_point if (i == finish_line_idx) else [current_point[0] - dir_to_current_point[0]*turn_dst, current_point[0] - dir_to_current_point[0]*turn_dst]
-    #         turn_boundaries.append(Line(turn_boundary_point[0], turn_boundary_point[1], 
-    #                                     previous_point[0] - dir_to_current_point[0]*turn_dst, 
-    #                                     previous_point[1] - dir_to_current_point[1]*turn_dst))
-    #         previous_point = turn_boundary_point
-
-
-        
+    return turn_boundaries        
 
 # Main Boiler Plate =============================================================
 def main(args=None):
@@ -485,3 +431,4 @@ def main(args=None):
 
 if __name__ == "__main__":
     main()
+    
