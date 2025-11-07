@@ -1,4 +1,4 @@
-from math import hypot, atan2, inf, cos, sin, pi, asin
+from math import hypot, atan2, inf, cos, sin, pi, asin, e
 import time
 
 import rclpy
@@ -26,8 +26,9 @@ class Controller(Node):
         self.declare_parameter("K_p", float(0.1))
         self.declare_parameter("K_i", float(0.0))
         self.declare_parameter("K_d", float(0.0))
+        self.declare_parameter("steepness_factor", float(0.0))
         self.declare_parameter("startup_threshold", float(0.1))
-
+       
         # Parameters: Get Values
         self.frequency_ = self.get_parameter("frequency").value
         self.lookahead_distance_ = self.get_parameter("lookahead_distance").value
@@ -39,6 +40,7 @@ class Controller(Node):
         self.K_p_ = self.get_parameter("K_p").value
         self.K_i_ = self.get_parameter("K_i").value
         self.K_d_ = self.get_parameter("K_d").value
+        self.steepness_factor_ = self.get_parameter("steepness_factor").value
         self.startup_threshold_ = self.get_parameter("startup_threshold").value
         self.current_lin_vel = 0.0
 
@@ -283,9 +285,11 @@ class Controller(Node):
                 self.current_lin_vel = lin_vel
                 return   
             else:
-                lin_vel = self.max_lin_vel_
+                lin_vel = self.speed_sigmoid_controller
+                #lin_vel = self.max_lin_vel_ * self.speed_sigmoid_controller
+                #angle PID controller
                 target_angle = atan2(lookahead_y - self.rbt_y_, lookahead_x - self.rbt_x_)
-                
+            
                 if abs(target_angle - self.rbt_yaw_) > pi:
                     if target_angle < -(pi/2):
                         ang_vel = self.angle_PID(target_angle + 2*pi, self.rbt_yaw_)
@@ -294,29 +298,29 @@ class Controller(Node):
                 else:
                     ang_vel = self.angle_PID(target_angle, self.rbt_yaw_)
 
-                # get curvature
-                # local_y = (lookahead_y - self.rbt_y_)*cos(self.rbt_yaw_) - (lookahead_x - self.rbt_x_)*sin(self.rbt_yaw_)
-                # curve = (2*local_y)/(distance*distance)
+                #get curvature
+                local_y = (lookahead_y - self.rbt_y_)*cos(self.rbt_yaw_) - (lookahead_x - self.rbt_x_)*sin(self.rbt_yaw_)
+                curve = (2*local_y)/(distance*distance)
 
-                # calculate velocities based on theta as specified in robot control
-                # if abs((asin(local_y/distance))*180/pi) >= 80:
-                #     ang_vel = self.lookahead_lin_vel_*curve*1.4
-                #     lin_vel = self.lookahead_lin_vel_*0.2
-                # elif 80 > abs((asin(local_y/distance))*180/pi) > 60:
-                #     ang_vel = self.lookahead_lin_vel_*curve*1.4
-                #     lin_vel = self.lookahead_lin_vel_*0.3
-                # elif abs((asin(local_y/distance))*180/pi) > 40:
-                #     ang_vel = self.lookahead_lin_vel_*curve*1.4
-                #     lin_vel = self.lookahead_lin_vel_*0.4
-                # elif 40> abs((asin(local_y/distance))*180/pi) > 20:
-                #     ang_vel = self.lookahead_lin_vel_*curve*1.4
-                #     lin_vel = self.lookahead_lin_vel_*0.6
-                # elif 20 > abs((asin(local_y/distance))*180/pi) > 10:
-                #     ang_vel = self.lookahead_lin_vel_*curve*1.2
-                #     lin_vel = self.lookahead_lin_vel_*0.8
-                # elif abs((asin(local_y/distance))*180/pi) <= 10:
-                #     ang_vel = self.lookahead_lin_vel_*curve
-                #     lin_vel = self.lookahead_lin_vel_*(15/(abs((asin(local_y/distance))*180/pi)))
+                #calculate velocities based on theta as specified in robot control
+                if abs((asin(local_y/distance))*180/pi) >= 80:
+                    ang_vel = self.lookahead_lin_vel_*curve*1.4
+                    lin_vel = self.max_lin_vel_*0.2
+                elif 80 > abs((asin(local_y/distance))*180/pi) > 60:
+                    ang_vel = self.lookahead_lin_vel_*curve*1.4
+                    lin_vel = self.max_lin_vel_*0.3
+                elif abs((asin(local_y/distance))*180/pi) > 40:
+                    ang_vel = self.lookahead_lin_vel_*curve*1.4
+                    lin_vel = self.max_lin_vel_*0.4
+                elif 40> abs((asin(local_y/distance))*180/pi) > 20:
+                    ang_vel = self.lookahead_lin_vel_*curve*1.4
+                    lin_vel = self.max_lin_vel_*0.6
+                elif 20 > abs((asin(local_y/distance))*180/pi) > 10:
+                    ang_vel = self.lookahead_lin_vel_*curve*1.2
+                    lin_vel = self.max_lin_vel_*0.8
+                elif abs((asin(local_y/distance))*180/pi) <= 10:
+                    ang_vel = self.lookahead_lin_vel_*curve
+                    lin_vel = self.max_lin_vel_
 
         
         # saturate velocities. The following can result in the wrong curvature,
@@ -335,7 +339,7 @@ class Controller(Node):
         msg_cmd_vel.twist.linear.x = lin_vel
         msg_cmd_vel.twist.angular.z = ang_vel
         self.pub_cmd_vel_.publish(msg_cmd_vel)
-        print(f"yaw angle: {self.rbt_yaw_}")
+        print(f"lin vel: {lin_vel}")
 
 
     def angle_PID(self, target, current):
@@ -354,6 +358,20 @@ class Controller(Node):
         self.prev_err = err
 
         return err*self.K_p_ + self.integral*self.K_i_ + derivative*self.K_d_
+    
+    #target = lookahead, current = robot current pos
+    def speed_sigmoid_controller(self, current_x_, current_y_):
+
+        lookahead_pose = self.path_poses_[self.lookahead_idx_]
+        lookahead_x = lookahead_pose.pose.position.x
+        lookahead_y = lookahead_pose.pose.position.y
+        position_err = hypot(lookahead_x - current_x_, lookahead_y - current_y_)
+        
+
+        sigmoid_output = 1/(1 + e**(-1*(self.steepness_factor_) * (position_err)))
+
+        return sigmoid_output * self.max_lin_vel_
+    
 
     def reset_(self):
         # Other Instance Variables
