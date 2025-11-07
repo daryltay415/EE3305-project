@@ -285,7 +285,7 @@ class Controller(Node):
                 self.current_lin_vel = lin_vel
                 return   
             else:
-                lin_vel = self.speed_sigmoid_controller
+                lin_vel = self.speed_sigmoid_controller(self.rbt_x_, self.rbt_y_)
                 #lin_vel = self.max_lin_vel_ * self.speed_sigmoid_controller
                 #angle PID controller
                 target_angle = atan2(lookahead_y - self.rbt_y_, lookahead_x - self.rbt_x_)
