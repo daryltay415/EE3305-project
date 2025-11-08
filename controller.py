@@ -152,6 +152,7 @@ class Controller(Node):
     
     def getBoundaryLookaheadPoint_(self):
         # Boundary lookahead point determined by whenever the robot crosses the boundary for the next point in line
+        old_idx = self.lookahead_idx_ 
 
         if self.reach_goal_ == False:
             # Keeping going through the boundaries until we find one that we haven't crossed yet
@@ -161,6 +162,11 @@ class Controller(Node):
                     self.lookahead_idx_ = -1
                     self.reach_goal_ = True
                     break
+
+        if old_idx != self.lookahead_idx_:
+            self.integral = 0
+            self.time = 0
+            self.prev_err = 0
 
         # Currently display point at which it starts turning, early to reaching the point
         msg_lookahead = self.path_poses_[self.lookahead_idx_ + 1]
