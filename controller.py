@@ -1,4 +1,4 @@
-from math import hypot, atan2, inf, cos, sin, pi, asin, e
+from math import hypot, atan2, inf, cos, sin, pi, asin, e, exp
 import time
 
 import rclpy
@@ -27,7 +27,8 @@ class Controller(Node):
         self.declare_parameter("K_p", float(0.1))
         self.declare_parameter("K_i", float(0.0))
         self.declare_parameter("K_d", float(0.0))
-        self.declare_parameter("steepness_factor", float(0.0))
+        self.declare_parameter("sigmoid_k", float(5.0))
+        self.declare_parameter("sigmoid_c", float(3))
         self.declare_parameter("startup_threshold", float(0.1))
        
         # Parameters: Get Values
@@ -42,7 +43,8 @@ class Controller(Node):
         self.K_p_ = self.get_parameter("K_p").value
         self.K_i_ = self.get_parameter("K_i").value
         self.K_d_ = self.get_parameter("K_d").value
-        self.steepness_factor_ = self.get_parameter("steepness_factor").value
+        self.sigmoid_k_ = self.get_parameter("sigmoid_k").value
+        self.sigmoid_c_ = self.get_parameter("sigmoid_c").value
         self.startup_threshold_ = self.get_parameter("startup_threshold").value
         self.current_lin_vel = 0.0
 
@@ -88,6 +90,9 @@ class Controller(Node):
         self.integral = 0
         self.time = 0
         self.prev_err = 0
+
+        # Instance Sigmoid Controller Variables
+        self.full_lookahead_dist_ = 0
 
     # Callbacks =============================================================
     
@@ -164,17 +169,20 @@ class Controller(Node):
                     self.lookahead_idx_ = -1
                     self.reach_goal_ = True
                     break
-
-        if old_idx != self.lookahead_idx_:
-            self.integral = 0
-            self.time = 0
-            self.prev_err = 0
-
+        
         # Currently display point at which it starts turning, early to reaching the point
         msg_lookahead = self.path_poses_[self.lookahead_idx_ + 1]
         msg_lookahead.header.stamp = self.get_clock().now().to_msg()
         msg_lookahead.header.frame_id = "map"
         self.pub_lookahead_.publish(msg_lookahead)
+
+        # If we have switched to a new lookahead point
+        if old_idx != self.lookahead_idx_:
+            self.integral = 0
+            self.time = 0
+            self.prev_err = 0
+            self.full_lookahead_dist_ = hypot(msg_lookahead.pose.position.x - self.rbt_x_,
+                                             msg_lookahead.pose.position.y - self.rbt_y_)
 
         #target_lookahead = self.path_poses_[self.lookahead_idx_]
         return msg_lookahead.pose.position.x, msg_lookahead.pose.position.y
@@ -266,6 +274,8 @@ class Controller(Node):
             if abs(target_angle - self.rbt_yaw_) < self.startup_threshold_:
                 ang_vel = 0.0
                 self.startup_ = False
+                self.full_lookahead_dist_ = hypot(self.path_poses_[1].pose.position.x - self.rbt_x_,
+                                                  self.path_poses_[1].pose.position.y - self.rbt_y_)
             elif abs(target_angle - self.rbt_yaw_) > pi:
                 if target_angle < -(pi/2):
                     ang_vel = self.angle_PID(target_angle + 2*pi, self.rbt_yaw_)
@@ -298,6 +308,11 @@ class Controller(Node):
                         ang_vel = self.angle_PID(target_angle, self.rbt_yaw_ + 2*pi)
                 else:
                     ang_vel = self.angle_PID(target_angle, self.rbt_yaw_)
+            
+            # linear speed controller
+            # lin_vel = self.speed_sigmoid_controller(lookahead_x, lookahead_y)
+            lin_vel = self.double_sigmoid_controller(lookahead_x, lookahead_y)
+            self.current_lin_vel = lin_vel
         
         # saturate velocities. The following can result in the wrong curvature,
         # but only when the robot is travelling too fast (which should not occur if well tuned).
@@ -306,11 +321,6 @@ class Controller(Node):
             ang_vel = max(ang_vel, -self.max_ang_vel_)
         else:
             ang_vel = min(ang_vel, self.max_ang_vel_)
-
-        # linear speed controller
-        lin_vel = self.speed_sigmoid_controller()
-        # lin_vel = self.speed_controller(ang_vel)
-        self.current_lin_vel = lin_vel
 
         # publish velocities
         msg_cmd_vel = TwistStamped()
@@ -338,31 +348,24 @@ class Controller(Node):
 
         return err*self.K_p_ + self.integral*self.K_i_ + derivative*self.K_d_
     
-    def speed_sigmoid_controller(self):
-
-            lookahead_pose = self.path_poses_[self.lookahead_idx_]
-            lookahead_x = lookahead_pose.pose.position.x
-            lookahead_y = lookahead_pose.pose.position.y
+    def speed_sigmoid_controller(self, lookahead_x, lookahead_y):
             position_err = hypot(lookahead_x - self.rbt_x_, lookahead_y - self.rbt_y_)
             
 
-            sigmoid_output = 1/(1 + e**(-1*(self.steepness_factor_) * (position_err)))
+            sigmoid_output = 1/(1 + e**(-1*(self.sigmoid_k_) * (position_err)))
 
             return sigmoid_output * self.safe_lin_vel_    
     
-    # def speed_controller(self, ang_vel):
-    #     ratio = abs(ang_vel) / self.max_ang_vel_
-    #     turning_ratio = 1-2*(ratio-0.5) if ratio > 0.5 else 1
+    def double_sigmoid_controller(self, lookahead_x, lookahead_y):
 
-    #     lookahead_pose = self.path_poses_[self.lookahead_idx_]
-    #     lookahead_x = lookahead_pose.pose.position.x
-    #     lookahead_y = lookahead_pose.pose.position.y
-    #     position_err = hypot(lookahead_x - self.rbt_x_, lookahead_y - self.rbt_y_)
-        
+        x = hypot(lookahead_x - self.rbt_x_, lookahead_y - self.rbt_y_)
+        return (self.safe_lin_vel_
+             + (self.max_lin_vel_ - self.safe_lin_vel_)
+             * (1-self.sigmoid(x - self.full_lookahead_dist_ + self.sigmoid_c_))
+             * (self.sigmoid(x - self.turn_dist_ - self.sigmoid_c_)))
 
-    #     sigmoid_ratio = 1 - 1/(1 + e**(-1*(self.steepness_factor_) * (position_err)))
-
-    #     return self.safe_lin_vel_ + turning_ratio*sigmoid_ratio*(self.max_lin_vel_ - self.safe_lin_vel_)
+    def sigmoid(self, x):
+        return 1/(1+exp(-1*self.sigmoid_k_*x))
 
     def reset_(self):
         # PID Instance Variables
