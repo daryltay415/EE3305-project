@@ -21,6 +21,7 @@ class Controller(Node):
         self.declare_parameter("lookahead_lin_vel", float(0.1))
         self.declare_parameter("stop_thres", float(0.1))
         self.declare_parameter("max_lin_vel", float(0.2))
+        self.declare_parameter("safe_lin_vel", float(0.2))
         self.declare_parameter("max_ang_vel", float(2.0))
         self.declare_parameter("turn_dist", float(0.2))
         self.declare_parameter("K_p", float(0.1))
@@ -35,6 +36,7 @@ class Controller(Node):
         self.lookahead_lin_vel_ = self.get_parameter("lookahead_lin_vel").value
         self.stop_thres_ = self.get_parameter("stop_thres").value
         self.max_lin_vel_ = self.get_parameter("max_lin_vel").value
+        self.safe_lin_vel_ = self.get_parameter("safe_lin_vel").value
         self.max_ang_vel_ = self.get_parameter("max_ang_vel").value
         self.turn_dist_ = self.get_parameter("turn_dist").value
         self.K_p_ = self.get_parameter("K_p").value
@@ -286,8 +288,6 @@ class Controller(Node):
                 self.current_lin_vel = lin_vel
                 return   
             else:
-                lin_vel = self.speed_sigmoid_controller(self.rbt_x_, self.rbt_y_)
-
                 # angle PID controller
                 target_angle = atan2(lookahead_y - self.rbt_y_, lookahead_x - self.rbt_x_)
             
@@ -301,8 +301,15 @@ class Controller(Node):
         
         # saturate velocities. The following can result in the wrong curvature,
         # but only when the robot is travelling too fast (which should not occur if well tuned).
-        lin_vel = min(lin_vel, self.max_lin_vel_)
-        ang_vel = min(ang_vel, self.max_ang_vel_)
+        # lin_vel = min(lin_vel, self.max_lin_vel_)
+        if ang_vel < 0:
+            ang_vel = max(ang_vel, -self.max_ang_vel_)
+        else:
+            ang_vel = min(ang_vel, self.max_ang_vel_)
+
+        # linear speed controller
+        lin_vel = self.speed_sigmoid_controller()
+        # lin_vel = self.speed_controller(ang_vel)
         self.current_lin_vel = lin_vel
 
         # publish velocities
@@ -311,7 +318,7 @@ class Controller(Node):
         msg_cmd_vel.twist.linear.x = lin_vel
         msg_cmd_vel.twist.angular.z = ang_vel
         self.pub_cmd_vel_.publish(msg_cmd_vel)
-        print(f"lin vel: {lin_vel}")
+        print(f"lin vel: {lin_vel}, ang vel: {ang_vel}")
 
 
     def angle_PID(self, target, current):
@@ -331,18 +338,31 @@ class Controller(Node):
 
         return err*self.K_p_ + self.integral*self.K_i_ + derivative*self.K_d_
     
-    def speed_sigmoid_controller(self, current_x_, current_y_):
+    def speed_sigmoid_controller(self):
 
-        lookahead_pose = self.path_poses_[self.lookahead_idx_]
-        lookahead_x = lookahead_pose.pose.position.x
-        lookahead_y = lookahead_pose.pose.position.y
-        position_err = hypot(lookahead_x - current_x_, lookahead_y - current_y_)
+            lookahead_pose = self.path_poses_[self.lookahead_idx_]
+            lookahead_x = lookahead_pose.pose.position.x
+            lookahead_y = lookahead_pose.pose.position.y
+            position_err = hypot(lookahead_x - self.rbt_x_, lookahead_y - self.rbt_y_)
+            
+
+            sigmoid_output = 1/(1 + e**(-1*(self.steepness_factor_) * (position_err)))
+
+            return sigmoid_output * self.safe_lin_vel_    
+    
+    # def speed_controller(self, ang_vel):
+    #     ratio = abs(ang_vel) / self.max_ang_vel_
+    #     turning_ratio = 1-2*(ratio-0.5) if ratio > 0.5 else 1
+
+    #     lookahead_pose = self.path_poses_[self.lookahead_idx_]
+    #     lookahead_x = lookahead_pose.pose.position.x
+    #     lookahead_y = lookahead_pose.pose.position.y
+    #     position_err = hypot(lookahead_x - self.rbt_x_, lookahead_y - self.rbt_y_)
         
 
-        sigmoid_output = 1/(1 + e**(-1*(self.steepness_factor_) * (position_err)))
+    #     sigmoid_ratio = 1 - 1/(1 + e**(-1*(self.steepness_factor_) * (position_err)))
 
-        return sigmoid_output * self.max_lin_vel_
-    
+    #     return self.safe_lin_vel_ + turning_ratio*sigmoid_ratio*(self.max_lin_vel_ - self.safe_lin_vel_)
 
     def reset_(self):
         # PID Instance Variables
