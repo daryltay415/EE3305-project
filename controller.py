@@ -163,11 +163,12 @@ class Controller(Node):
                     break
 
         # Currently display point at which it starts turning, early to reaching the point
-        msg_lookahead = self.turn_boundaries[self.lookahead_idx_].point1
+        msg_lookahead = self.path_poses_[self.lookahead_idx_ + 1]
         msg_lookahead.header.stamp = self.get_clock().now().to_msg()
         msg_lookahead.header.frame_id = "map"
         self.pub_lookahead_.publish(msg_lookahead)
 
+        #target_lookahead = self.path_poses_[self.lookahead_idx_]
         return msg_lookahead.pose.position.x, msg_lookahead.pose.position.y
 
     def getAdaptiveLookaheadPoint_(self):

@@ -9,10 +9,10 @@ controller:
     lookahead_distance: 0.1 # {double} [m]
     lookahead_lin_vel: 0.2 # {double} [m/s]
     stop_thres: 0.1 # {double} [m]
-    max_lin_vel: 5.0 # {double} [m/s]
+    max_lin_vel: 8.0 # {double} [m/s]
     max_ang_vel: 10.0 # {double} [rad/s]
-    turn_dst: 0.5 # {double} [m]
-    K_p: 16.0 # {float} []
+    turn_dist: 0.4 # {double} [m]
+    K_p: 15.0 # {float} []
     K_i: 0.2 # {float} []
     K_d: 0.05 # {float} []
     startup_threshold: 0.1 # {float} [rad]
@@ -21,5 +21,5 @@ controller:
 planner:
   ros__parameters:
     max_access_cost: 90 # {int} []
-    max_skipping_cost: 10 # {int} []
+    max_skipping_cost: 15 # {int} []
     max_skipping_dist: 4.0 # {double} [m]
