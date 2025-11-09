@@ -328,7 +328,6 @@ class Controller(Node):
         msg_cmd_vel.twist.linear.x = lin_vel
         msg_cmd_vel.twist.angular.z = ang_vel
         self.pub_cmd_vel_.publish(msg_cmd_vel)
-        print(f"lin vel: {lin_vel}, ang vel: {ang_vel}")
 
 
     def angle_PID(self, target, current):
