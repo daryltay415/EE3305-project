@@ -1,0 +1,30 @@
+<mujoco model="pogo_stick">
+    <default>
+        <geom type="mesh" density="7230"/>
+    </default>
+    <asset>
+        <mesh name="pogo_lower" file="PogoBottom.STL" scale="0.001 0.001 0.001"/>
+        <mesh name="pogo_upper" file="PogoTop.STL" scale="0.001 0.001 0.001"/>            
+    </asset>
+    <worldbody>
+        <body name="pogo_upper" pos="0 0 0.2">
+            <joint name="pogo_top" type="free"/>
+            <geom mesh="pogo_upper" xyaxes="0 1 0 0 0 1"/>
+            <site name="left_grip" pos="0 0.17 1.21"/>
+            <site name="right_grip" pos="0 -0.17 1.21"/>
+            <site name="left_foothold" pos="0 0.09 0.5"/>
+            <site name="right_foothold" pos="0 -0.09 0.5"/>
+            <body name="pogo_lower">
+                <joint name="pogo_bottom" range="-2 2" type="slide" axis="0 0 1" stiffness="25000" damping="0.1" springref="0.1"/>
+                <geom name="pogo_lower" mesh="pogo_lower" xyaxes="0 1 0 0 0 1"/>
+            </body>
+        </body>
+
+
+        <!-- <geom name="ground" pos="0 0 -0.4"
+            type="plane"
+            size="2 2 0.1"
+            rgba="0.4 0.8 1 1"
+            friction="1 0.1 0.1"/> -->
+    </worldbody>
+</mujoco>
